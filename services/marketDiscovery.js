@@ -10,27 +10,82 @@ const { query } = require('./db');
 
 const MIN_HOURS = Number(process.env.MIN_HOURS_TO_RESOLUTION || 24);
 const MAX_DAYS = Number(process.env.MAX_DAYS_TO_RESOLUTION || 180);
-const PER_RUN_MARKET_CAP = Number(process.env.PER_RUN_MARKET_CAP || 200);
+const PER_RUN_EVENT_CAP = Number(process.env.PER_RUN_EVENT_CAP || 300);
 const PER_RUN_FORECAST_CAP = Number(process.env.PER_RUN_FORECAST_CAP || 25);
+const CLASSIFY_CAP = Number(process.env.CLASSIFY_CAP || 80);
+
+// Categories from /events that are explicitly out-of-scope per CLAUDE.md.
+// Skipping at the event stage saves classifier spend on hundreds of markets.
+const CATEGORY_DENYLIST = new Set([
+  'Elections',
+  'Politics',
+  'Economics',
+  'Financials',
+  'Crypto',
+  'Climate and Weather',
+]);
+
+// "1 leg max" rule: every Kalshi multi-variable / parlay market starts with
+// KXMVE (Kalshi Multi-Variable Event). These dominate /markets default
+// ordering by open_interest but are never forecastable — joint probabilities
+// of independent conditions can't be derived from public news.
+const PARLAY_TICKER_PREFIX = 'KXMVE';
 
 let _running = false;
 
-async function fetchOpenMarketsPaginated(maxMarkets) {
-  const out = [];
-  let cursor = null;
-  while (out.length < maxMarkets) {
-    const page = await kalshi.listOpenMarkets({ limit: 200, cursor });
-    if (!page?.markets?.length) break;
-    out.push(...page.markets);
-    cursor = page.cursor || null;
-    if (!cursor) break;
-  }
-  return out.slice(0, maxMarkets);
+function isParlayTicker(ticker) {
+  return typeof ticker === 'string' && ticker.startsWith(PARLAY_TICKER_PREFIX);
 }
 
 function withinResolutionWindow(market) {
   const h = hoursUntil(market.close_time);
   return h >= MIN_HOURS && h / 24 <= MAX_DAYS;
+}
+
+async function fetchInScopeEventsPaginated(maxEvents) {
+  const out = [];
+  let cursor = null;
+  let totalSeen = 0;
+  while (out.length < maxEvents) {
+    const page = await kalshi.listEvents({ status: 'open', limit: 200, cursor });
+    const events = page?.events || [];
+    if (!events.length) break;
+    totalSeen += events.length;
+    for (const event of events) {
+      if (CATEGORY_DENYLIST.has(event.category)) continue;
+      out.push(event);
+      if (out.length >= maxEvents) break;
+    }
+    cursor = page.cursor || null;
+    if (!cursor) break;
+  }
+  return { events: out, totalSeen };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchMarketsForEvents(events) {
+  // Throttle to be polite to Kalshi (they 429 readily). publicRequest
+  // already retries with backoff, but spacing avoids triggering it.
+  const all = [];
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    try {
+      const data = await kalshi.listOpenMarkets({ eventTicker: event.event_ticker });
+      const markets = data?.markets || [];
+      for (const m of markets) {
+        m.event_category = event.category;
+        m.event_title = event.title;
+      }
+      all.push(...markets);
+    } catch (err) {
+      console.warn('[discovery] event-markets fetch failed:', event.event_ticker, err.message);
+    }
+    if (i < events.length - 1) await sleep(80);
+  }
+  return all;
 }
 
 function rankCandidates(markets) {
@@ -39,6 +94,7 @@ function rankCandidates(markets) {
   // the side with positive edge later.
   return markets
     .filter(withinResolutionWindow)
+    .filter((m) => !isParlayTicker(m.ticker))
     .filter((m) => m.yes_ask != null || m.no_ask != null)
     .sort((a, b) => {
       const liquidityA = (a.volume_24h || a.volume || 0) + (a.open_interest || 0);
@@ -72,15 +128,18 @@ async function runDiscoveryCycle({ dryRun = false } = {}) {
     runId = await startScanRun();
     console.log('[discovery] starting scan run', runId);
 
-    const allMarkets = await fetchOpenMarketsPaginated(PER_RUN_MARKET_CAP);
+    const { events, totalSeen } = await fetchInScopeEventsPaginated(PER_RUN_EVENT_CAP);
+    console.log(`[discovery] events: ${totalSeen} seen, ${events.length} in allowed categories`);
+
+    const allMarkets = await fetchMarketsForEvents(events);
     stats.scanned = allMarkets.length;
-    console.log(`[discovery] fetched ${allMarkets.length} open markets`);
+    console.log(`[discovery] fetched ${allMarkets.length} markets across ${events.length} events`);
 
     const candidates = rankCandidates(allMarkets);
-    console.log(`[discovery] ${candidates.length} candidates after window+price filters`);
+    console.log(`[discovery] ${candidates.length} candidates after window+parlay+price filters`);
 
     const inScope = [];
-    for (const market of candidates.slice(0, 80)) {
+    for (const market of candidates.slice(0, CLASSIFY_CAP)) {
       try {
         const classification = await classifyOrCache(market);
         if (classification.in_scope) {

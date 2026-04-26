@@ -68,16 +68,37 @@ async function authedRequest(method, urlPath, { params, data } = {}) {
   }
 }
 
-async function publicRequest(method, urlPath, { params } = {}) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function publicRequest(method, urlPath, { params, maxRetries = 3 } = {}) {
   const fullUrl = urlPath.startsWith('http') ? urlPath : `${BASE}${urlPath}`;
-  try {
-    const res = await axios({ method, url: fullUrl, params, timeout: 15000 });
-    return res.data;
-  } catch (err) {
-    const status = err.response?.status;
-    const wrapped = new Error(`[kalshi] public ${method} ${urlPath} failed status=${status}`);
-    wrapped.status = status;
-    throw wrapped;
+  let attempt = 0;
+  // Retry on 429 (rate limit) and 5xx with exponential backoff. Other
+  // statuses fail fast — they are typically caller-side errors (bad
+  // ticker, malformed query) that retrying won't fix.
+  while (true) {
+    try {
+      const res = await axios({ method, url: fullUrl, params, timeout: 15000 });
+      return res.data;
+    } catch (err) {
+      const status = err.response?.status;
+      const retriable = status === 429 || (status >= 500 && status < 600);
+      if (retriable && attempt < maxRetries) {
+        const retryAfterHeader = Number(err.response?.headers?.['retry-after']);
+        const backoffMs = Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
+          ? retryAfterHeader * 1000
+          : Math.min(1000 * Math.pow(2, attempt), 8000);
+        attempt++;
+        console.warn(`[kalshi] ${status} on ${urlPath}, retry ${attempt}/${maxRetries} in ${backoffMs}ms`);
+        await sleep(backoffMs);
+        continue;
+      }
+      const wrapped = new Error(`[kalshi] public ${method} ${urlPath} failed status=${status}`);
+      wrapped.status = status;
+      throw wrapped;
+    }
   }
 }
 
