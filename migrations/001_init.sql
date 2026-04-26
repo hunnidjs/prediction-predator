@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS signals (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS signals_idempotency
-  ON signals (market_ticker, signal_version, DATE(created_at));
+  ON signals (market_ticker, signal_version, ((created_at AT TIME ZONE 'UTC')::date));
 
 CREATE INDEX IF NOT EXISTS signals_unresolved
   ON signals (resolved_at) WHERE resolved_at IS NULL;
