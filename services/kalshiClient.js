@@ -81,11 +81,40 @@ async function publicRequest(method, urlPath, { params } = {}) {
   }
 }
 
+// Kalshi v2 now returns prices as dollars (e.g. 0.42) and liquidity as `_fp` fields.
+// We normalize back to the cents-and-ints shape the rest of the codebase assumes.
+function dollarsToCents(d) {
+  return d == null ? null : Math.round(Number(d) * 100);
+}
+
+function normalizeMarket(m) {
+  if (!m) return m;
+  return {
+    ...m,
+    yes_ask: dollarsToCents(m.yes_ask_dollars),
+    no_ask: dollarsToCents(m.no_ask_dollars),
+    yes_bid: dollarsToCents(m.yes_bid_dollars),
+    no_bid: dollarsToCents(m.no_bid_dollars),
+    last_price: dollarsToCents(m.last_price_dollars),
+    volume: m.volume_fp ?? m.volume ?? 0,
+    volume_24h: m.volume_24h_fp ?? m.volume_24h ?? 0,
+    open_interest: m.open_interest_fp ?? m.open_interest ?? 0,
+  };
+}
+
+function normalizeMarketsResponse(data) {
+  if (!data) return data;
+  if (Array.isArray(data.markets)) return { ...data, markets: data.markets.map(normalizeMarket) };
+  if (data.market) return { ...data, market: normalizeMarket(data.market) };
+  return data;
+}
+
 async function listOpenMarkets({ limit = 200, cursor = null, eventTicker = null } = {}) {
   const params = { status: 'open', limit };
   if (cursor) params.cursor = cursor;
   if (eventTicker) params.event_ticker = eventTicker;
-  return publicRequest('GET', '/markets', { params });
+  const data = await publicRequest('GET', '/markets', { params });
+  return normalizeMarketsResponse(data);
 }
 
 async function listEvents({ limit = 100, cursor = null, status = 'open' } = {}) {
@@ -95,7 +124,8 @@ async function listEvents({ limit = 100, cursor = null, status = 'open' } = {}) 
 }
 
 async function getMarket(ticker) {
-  return publicRequest('GET', `/markets/${ticker}`);
+  const data = await publicRequest('GET', `/markets/${ticker}`);
+  return normalizeMarketsResponse(data);
 }
 
 async function getOrderbook(ticker, depth = 5) {
@@ -106,7 +136,8 @@ async function listSettledMarkets({ limit = 200, cursor = null, minCloseTs = nul
   const params = { status: 'settled', limit };
   if (cursor) params.cursor = cursor;
   if (minCloseTs) params.min_close_ts = minCloseTs;
-  return publicRequest('GET', '/markets', { params });
+  const data = await publicRequest('GET', '/markets', { params });
+  return normalizeMarketsResponse(data);
 }
 
 async function getBalance() {
