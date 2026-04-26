@@ -34,9 +34,12 @@ function withinResolutionWindow(market) {
 }
 
 function rankCandidates(markets) {
+  // Adapter normalizes sentinel/no-offer prices to null. A market is a
+  // candidate if AT LEAST ONE side has a real ask — edgeEvaluator picks
+  // the side with positive edge later.
   return markets
     .filter(withinResolutionWindow)
-    .filter((m) => m.yes_ask != null && m.no_ask != null)
+    .filter((m) => m.yes_ask != null || m.no_ask != null)
     .sort((a, b) => {
       const liquidityA = (a.volume_24h || a.volume || 0) + (a.open_interest || 0);
       const liquidityB = (b.volume_24h || b.volume || 0) + (b.open_interest || 0);

@@ -83,22 +83,36 @@ async function publicRequest(method, urlPath, { params } = {}) {
 
 // Kalshi v2 now returns prices as dollars (e.g. 0.42) and liquidity as `_fp` fields.
 // We normalize back to the cents-and-ints shape the rest of the codebase assumes.
+//
+// Sentinel handling: Kalshi reports "no offer" sides as 0.0000 (no real ask)
+// or 1.0000 (max-of-range sentinel on ask). Bids do the same with 0.0000.
+// We collapse those to null so a downstream `m.yes_ask != null` check means
+// "there is a real, executable price."
 function dollarsToCents(d) {
-  return d == null ? null : Math.round(Number(d) * 100);
+  if (d == null) return null;
+  const n = Number(d);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100);
+}
+
+function realPriceCents(d) {
+  const c = dollarsToCents(d);
+  if (c == null || c <= 0 || c >= 100) return null;
+  return c;
 }
 
 function normalizeMarket(m) {
   if (!m) return m;
   return {
     ...m,
-    yes_ask: dollarsToCents(m.yes_ask_dollars),
-    no_ask: dollarsToCents(m.no_ask_dollars),
-    yes_bid: dollarsToCents(m.yes_bid_dollars),
-    no_bid: dollarsToCents(m.no_bid_dollars),
+    yes_ask: realPriceCents(m.yes_ask_dollars),
+    no_ask: realPriceCents(m.no_ask_dollars),
+    yes_bid: realPriceCents(m.yes_bid_dollars),
+    no_bid: realPriceCents(m.no_bid_dollars),
     last_price: dollarsToCents(m.last_price_dollars),
-    volume: m.volume_fp ?? m.volume ?? 0,
-    volume_24h: m.volume_24h_fp ?? m.volume_24h ?? 0,
-    open_interest: m.open_interest_fp ?? m.open_interest ?? 0,
+    volume: Number(m.volume_fp ?? m.volume ?? 0),
+    volume_24h: Number(m.volume_24h_fp ?? m.volume_24h ?? 0),
+    open_interest: Number(m.open_interest_fp ?? m.open_interest ?? 0),
   };
 }
 
