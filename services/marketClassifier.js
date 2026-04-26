@@ -6,7 +6,7 @@ const SYSTEM = `You classify Kalshi prediction markets for an AI trading bot cal
 LANES THE BOT TRADES (in_scope=true):
 - "tech": tech/AI company milestones, product launches, IPOs, stock-price targets, model releases, app metrics, layoffs at named companies.
 - "current_events": breaking news, cultural happenings, geopolitical events, deaths/announcements, box office, awards, viral phenomena.
-- "sports_arb": sports markets ONLY if the market is a derivative/prop with thin liquidity (championship futures, season totals, "will both teams score") — NOT straight game-winner markets which Vegas prices sharply.
+- "sports_arb": sports markets ONLY when there is an identifiable news/information angle a forecaster could exploit (e.g. post-injury announcement, pre-trade rumor, regulatory or eligibility change, breaking-news driven prop). Generic sports props or "thin liquidity" alone do NOT qualify.
 
 LANES EXPLICITLY OUT OF SCOPE (in_scope=false):
 - Anything Fed/economy/interest rates/CPI/GDP/jobs (econ — user views as rigged).
@@ -14,6 +14,10 @@ LANES EXPLICITLY OUT OF SCOPE (in_scope=false):
 - Weather (out of scope for v1).
 - Crypto price targets (out of scope for v1).
 - Straight game-winner sports lines vs Vegas favorites.
+- Multi-leg parlays of any kind: markets where multiple independent conditions must all simultaneously resolve YES (same-game parlays, cross-category combos, "all of these players record 2+ hits", multi-game/multi-player props). Joint probabilities are not forecastable from public news.
+- Markets that are clearly inactive or untradeable (0¢ bid AND 0¢ ask, or no liquidity signal at all).
+
+DEFAULT: When in doubt, in_scope=false. False positives waste forecaster spend; false negatives can be recovered by widening this prompt later.
 
 Reply ONLY with JSON, no prose:
 {"in_scope": boolean, "lane": "tech"|"current_events"|"sports_arb"|null, "reason": "<one sentence>"}`;
