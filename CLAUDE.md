@@ -150,6 +150,59 @@ There is NO backtester. Forward calibration is the only validation. Most target 
 
 ---
 
+## Deployment — Render env vars
+
+The bot ships on Render the same way Twomiah Trader does: GitHub → Render Web Service → env vars in the Render dashboard.
+
+**Required to boot (minimum 6 vars):**
+
+| Key | Value | Notes |
+|-----|-------|-------|
+| `TRADING_MODE` | `signals` | default mode — read-only + alerts |
+| `DATABASE_URL` | Neon Postgres connection string | run `npm run migrate` once |
+| `ANTHROPIC_API_KEY` | Anthropic key | Haiku + Sonnet calls |
+| `TELEGRAM_BOT_TOKEN` | Telegram BotFather token | port from Twomiah |
+| `TELEGRAM_CHAT_ID` | Telegram chat ID | port from Twomiah |
+| `NEWSAPI_KEY` | newsapi.org free tier | 100 req/day on free |
+
+**Required for live trading (skip for v1):**
+
+| Key | Value | Notes |
+|-----|-------|-------|
+| `KALSHI_API_KEY_ID` | from Kalshi Settings → API Keys | only needed for `/portfolio/*` |
+| `KALSHI_PRIVATE_KEY` | PEM private key | escape newlines as `\n` in env |
+| `LIVE_TRADING_CONFIRMED` | `false` | second gate — set `true` only when ready |
+
+**Optional tuning (defaults shown, all env-tunable without code changes):**
+
+| Key | Default | What it does |
+|-----|---------|--------------|
+| `EDGE_MIN_CENTS` | `8` | minimum edge in cents to fire signal |
+| `CONFIDENCE_MIN` | `0.75` | Sonnet confidence floor |
+| `MAX_SPREAD_CENTS` | `20` | skip thinly-traded markets |
+| `MIN_HOURS_TO_RESOLUTION` | `24` | no late entries |
+| `MAX_DAYS_TO_RESOLUTION` | `180` | no super-long-dated speculation |
+| `MAX_BET_USD` | `50` | hard cap regardless of Kelly |
+| `KELLY_FRACTION` | `0.25` | fractional Kelly aggressiveness |
+| `DISCOVERY_CRON` | `*/30 * * * *` | scan cadence |
+| `RESOLVER_CRON` | `15 9 * * *` | daily resolution sweep |
+| `DAILY_DIGEST_CRON` | `0 9 * * *` | Telegram morning summary |
+| `CLASSIFIER_MODEL` | `claude-haiku-4-5-20251001` | cheap classifier |
+| `FORECAST_MODEL` | `claude-sonnet-4-6` | forecaster |
+| `KALSHI_API_BASE` | `https://api.elections.kalshi.com/trade-api/v2` | demo: `https://demo-api.kalshi.co/trade-api/v2` |
+| `PER_RUN_MARKET_CAP` | `200` | max markets fetched per cycle |
+| `PER_RUN_FORECAST_CAP` | `25` | max Sonnet forecasts per cycle (cost guard) |
+| `PORT` | Render injects | don't set manually on Render |
+
+**Build/start commands on Render:**
+- Build: `npm install`
+- Start: `npm start`
+- Auto-deploy from `main` branch
+
+**Migration:** after first deploy, open Render shell and run `npm run migrate` once. Or run locally with `DATABASE_URL` in `.env`. Idempotent — safe to re-run.
+
+---
+
 ## Common operations
 
 **Trigger an out-of-band scan:**
