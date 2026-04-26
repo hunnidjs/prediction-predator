@@ -17,6 +17,7 @@ app.use(require('./routes/signals'));
 app.use(require('./routes/markets'));
 app.use(require('./routes/calibration'));
 app.use(require('./routes/trade'));
+app.use(require('./routes/reports'));
 
 app.use((err, req, res, next) => {
   console.error('[server] unhandled error:', err);
