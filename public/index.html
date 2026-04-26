@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Prediction Predator</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #141821;
+    --border: #2a2f3d;
+    --text: #e6e9ef;
+    --muted: #8a93a6;
+    --accent: #e64946;
+    --good: #4ade80;
+    --bad: #f87171;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px;
+  }
+  header {
+    padding: 16px 24px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  h1 { margin: 0; font-size: 18px; letter-spacing: 0.5px; }
+  .badge {
+    display: inline-block; padding: 4px 10px; border-radius: 4px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+  }
+  .badge-signals { background: #1f2937; color: var(--muted); }
+  .badge-paper { background: #1e3a5f; color: #93c5fd; }
+  .badge-live { background: var(--accent); color: #fff; }
+  main { padding: 24px; max-width: 1400px; margin: 0 auto; }
+  .row { display: grid; gap: 16px; grid-template-columns: repeat(4, 1fr); margin-bottom: 24px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .stat-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .stat-value { font-size: 22px; font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+  .panel h2 { margin: 0 0 16px; font-size: 15px; }
+  .controls { display: flex; gap: 8px; margin-bottom: 16px; }
+  button {
+    background: #1f2530; color: var(--text); border: 1px solid var(--border);
+    padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+  }
+  button:hover { background: #2a3142; }
+  button.primary { background: var(--accent); border-color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .ticker { font-family: ui-monospace, "Menlo", monospace; color: var(--muted); }
+  .pos { color: var(--good); }
+  .neg { color: var(--bad); }
+  .side-yes { color: #4ade80; font-weight: 600; }
+  .side-no { color: #f87171; font-weight: 600; }
+  .rationale { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  details summary { cursor: pointer; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .err { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🦅 PREDICTION PREDATOR</h1>
+  <div id="mode-badge" class="badge badge-signals">loading...</div>
+</header>
+
+<main>
+  <div class="row" id="stats">
+    <div class="stat"><div class="stat-label">Open signals</div><div class="stat-value" id="open-count">—</div></div>
+    <div class="stat"><div class="stat-label">Resolved</div><div class="stat-value" id="resolved-count">—</div></div>
+    <div class="stat"><div class="stat-label">Win rate</div><div class="stat-value" id="winrate">—</div></div>
+    <div class="stat"><div class="stat-label">Brier score</div><div class="stat-value" id="brier">—</div></div>
+  </div>
+
+  <div class="panel">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h2>Open Signals</h2>
+      <div class="controls">
+        <button onclick="triggerScan(true)">Scan (dry)</button>
+        <button class="primary" onclick="triggerScan(false)">Run scan</button>
+      </div>
+    </div>
+    <table id="signals-table">
+      <thead>
+        <tr>
+          <th>When</th><th>Cat</th><th>Market</th><th>Side</th>
+          <th>Price</th><th>Model</th><th>Edge</th><th>Size</th><th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="signals-body"><tr><td colspan="9" class="muted">loading...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Recent Resolutions</h2>
+    <table id="resolved-table">
+      <thead>
+        <tr><th>When</th><th>Cat</th><th>Market</th><th>Side</th><th>Outcome</th><th>P&L</th></tr>
+      </thead>
+      <tbody id="resolved-body"><tr><td colspan="6" class="muted">none yet</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Calibration by Category</h2>
+    <table id="cal-table">
+      <thead>
+        <tr><th>Category</th><th>Resolved</th><th>Correct</th><th>Brier</th><th>P&L</th></tr>
+      </thead>
+      <tbody id="cal-body"><tr><td colspan="5" class="muted">loading...</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>System</h2>
+    <pre id="health" style="margin:0; color:var(--muted); font-size:12px;">loading...</pre>
+  </div>
+</main>
+
+<script>
+const fmt = (n, d=2) => n == null ? '—' : Number(n).toFixed(d);
+const fmtPct = (n) => n == null ? '—' : (Number(n) * 100).toFixed(0) + '%';
+const ago = (iso) => {
+  if (!iso) return '—';
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.round(ms / 60000);
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.round(h / 24)}d`;
+};
+
+async function loadHealth() {
+  const r = await fetch('/health'); const j = await r.json();
+  document.getElementById('health').textContent = JSON.stringify(j, null, 2);
+  const mode = j.mode?.mode || 'signals';
+  const badge = document.getElementById('mode-badge');
+  badge.textContent = mode.toUpperCase();
+  badge.className = 'badge badge-' + mode;
+}
+
+async function loadSignals() {
+  const r = await fetch('/signals?status=open&limit=100'); const j = await r.json();
+  const tb = document.getElementById('signals-body');
+  if (!j.signals?.length) {
+    tb.innerHTML = '<tr><td colspan="9" class="muted">no open signals yet — run a scan</td></tr>';
+  } else {
+    tb.innerHTML = j.signals.map(s => `
+      <tr>
+        <td class="muted">${ago(s.created_at)}</td>
+        <td>${s.category || '—'}</td>
+        <td>
+          <div class="ticker">${s.market_ticker}</div>
+          <div>${escapeHtml(s.question || '')}</div>
+          <div class="rationale">${escapeHtml((s.rationale || '').slice(0,200))}</div>
+        </td>
+        <td class="side-${(s.side||'').toLowerCase()}">${s.side}</td>
+        <td>${s.market_yes_price_cents}¢ / ${s.market_no_price_cents}¢</td>
+        <td>${fmtPct(s.model_p_yes)} <span class="muted">(c${fmt(s.confidence,2)})</span></td>
+        <td>${s.edge_cents}¢</td>
+        <td>$${fmt(s.recommended_size_usd)}</td>
+        <td class="muted">${s.order_action}</td>
+      </tr>`).join('');
+  }
+  document.getElementById('open-count').textContent = j.signals?.length ?? 0;
+}
+
+async function loadResolved() {
+  const r = await fetch('/signals?status=resolved&limit=20'); const j = await r.json();
+  const tb = document.getElementById('resolved-body');
+  if (!j.signals?.length) return;
+  tb.innerHTML = j.signals.map(s => `
+    <tr>
+      <td class="muted">${ago(s.resolved_at)}</td>
+      <td>${s.category || '—'}</td>
+      <td><div class="ticker">${s.market_ticker}</div><div>${escapeHtml(s.question||'')}</div></td>
+      <td class="side-${(s.side||'').toLowerCase()}">${s.side}</td>
+      <td>${s.resolved_outcome} ${s.was_correct ? '✓' : '✗'}</td>
+      <td class="${s.pnl_usd >= 0 ? 'pos' : 'neg'}">${s.pnl_usd >= 0 ? '+' : ''}$${fmt(s.pnl_usd)}</td>
+    </tr>`).join('');
+}
+
+async function loadCalibration() {
+  const r = await fetch('/calibration'); const j = await r.json();
+  document.getElementById('resolved-count').textContent = j.summary?.resolved_count ?? 0;
+  const correct = Number(j.summary?.correct_count || 0);
+  const total = Number(j.summary?.resolved_count || 0);
+  document.getElementById('winrate').textContent = total > 0 ? `${Math.round(correct / total * 100)}%` : '—';
+  document.getElementById('brier').textContent = j.brier != null ? fmt(j.brier, 3) : '—';
+
+  const r2 = await fetch('/calibration/by-category'); const j2 = await r2.json();
+  const tb = document.getElementById('cal-body');
+  if (!j2.rows?.length) { tb.innerHTML = '<tr><td colspan="5" class="muted">no resolutions yet</td></tr>'; return; }
+  tb.innerHTML = j2.rows.map(row => `
+    <tr>
+      <td>${row.category || '—'}</td>
+      <td>${row.resolved}</td>
+      <td>${row.correct}</td>
+      <td>${row.brier != null ? Number(row.brier).toFixed(3) : '—'}</td>
+      <td class="${row.pnl_usd >= 0 ? 'pos' : 'neg'}">${row.pnl_usd != null ? '$' + fmt(row.pnl_usd) : '—'}</td>
+    </tr>`).join('');
+}
+
+async function triggerScan(dryRun) {
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = 'scanning…';
+  await fetch('/signals/scan', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ dryRun }),
+  });
+  setTimeout(() => { loadAll(); btn.disabled = false; btn.textContent = dryRun ? 'Scan (dry)' : 'Run scan'; }, 4000);
+}
+
+function escapeHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function loadAll() {
+  await Promise.all([loadHealth(), loadSignals(), loadResolved(), loadCalibration()]);
+}
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>

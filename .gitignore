@@ -1,0 +1,13 @@
+node_modules/
+.npm-cache/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+analysis-output/
+.vscode/
+.idea/
+dist/
+build/
+coverage/
